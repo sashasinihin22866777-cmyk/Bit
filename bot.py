@@ -1,40 +1,30 @@
 # -*- coding: utf-8 -*-
-import os
-import re
-import time
-import sqlite3
-import threading
-import telebot
+import os, re, time, sqlite3, threading, telebot
 from telebot import types
 
 class Config:
     TOKEN = os.environ.get("BOT_TOKEN", "8721804861:AAHcUmRNRqdBIi3-LIJnvzzd8tWnyvdZPiQ")
     DEVELOPER_ID = 4322490316
-    SUPPORT_GROUP = -1004471681505
+    SUPPORT_GROUP = -1004322490316
+    ANKETA_GROUP = -1004460147391
+    TECH_GROUP = -1004437354329
     DB_PATH = "/tmp/secretary.db"
     RULES_URL = "https://telegra.ph/Pravila-dlya-polzovatelej-tesnyj-angel-07-24"
     FLOOD_INTERVAL = 2
     MUTE_TIME = 30
-    MIN_SETROLE = 5
-    MIN_REMOVEROLE = 5
-    MIN_BAN = 5
-    MIN_UNBAN = 5
-    MIN_WARN = 5
-    MIN_UNWARN = 5
-    MIN_KICK = 5
-    MIN_MUTE = 5
-    MIN_UNMUTE = 5
-    MIN_BOTSTATS = 8
-    MIN_LOGS = 8
-    MIN_BROADCAST = 8
-    MIN_CHECK = 1
-    MIN_TAKE = 1
+    ANKETA_COOLDOWN = 5 * 3600
+    MIN_SETROLE = 5; MIN_REMOVEROLE = 5; MIN_BAN = 5; MIN_UNBAN = 5
+    MIN_WARN = 5; MIN_UNWARN = 5; MIN_KICK = 5; MIN_MUTE = 5; MIN_UNMUTE = 5
+    MIN_BOTSTATS = 8; MIN_LOGS = 8; MIN_BROADCAST = 8; MIN_CHECK = 1; MIN_TAKE = 1
 
-RANKS = {
-    0: "Пользователь", 1: "Администратор", 2: "Младший администратор",
-    3: "Администратор бота", 4: "Старший администратор", 5: "Заместитель совладельца",
-    6: "Заместитель владельца", 7: "Совладелец", 8: "Владелец", 100: "Разработчик",
-}
+RANKS = {0:"Пользователь",1:"Администратор",2:"Младший администратор",3:"Администратор бота",
+         4:"Старший администратор",5:"Заместитель совладельца",6:"Заместитель владельца",
+         7:"Совладелец",8:"Владелец",100:"Разработчик"}
+
+ANKETA_OBSHENIE = ["Ваш юз.", "Псевдоним/тег (Реальное имя запрещено).", "Возраст (Берём с 14 лет).", "Часовой пояс от мск.", "Ваш пол.", "Сможете ли поддержать беседу на отвлечённые темы?", "Умеете ли вы шутить?", "Оценка грамотности от 1 до 10.", "Готовы общаться на БЫТОВЫЕ темы?", "Воспринимаете ли вы людей и ситуации серьезно?", "Готовы проявлять уважение к администрации?", "Готовы выполнять норму 100 сообщений в неделю?", "Возникают ли трудности при общении с незнакомыми?", "Готовы соблюдать конфиденциальность?", "Сможете ли отвлечь человека от грустных мыслей?", "Как вы относитесь к флирту от пользователя?", "Что важнее: совет или весело провести время?", "Придумайте 10 тем для холодного собеседника.", "Пользователь написал пошлую шутку — ваш ответ?", "Вы нарушили правило, никто не заметил — действия?"]
+ANKETA_PODDERZHKA = ["Псевдоним/тег (Реальное имя запрещено).", "Возраст (с 14 лет).", "Часовой пояс от мск.", "Ваш пол.", "Есть ли опыт в проектах поддержки?", "Знаете ли что такое активное слушание, валидация?", "Оценка стрессоустойчивости от 1 до 10.", "Оценка грамотности от 1 до 10.", "Сохраняете ли спокойствие при агрессии?", "Воспринимаете ли людей серьёзно?", "Уважение к администрации?", "Норма 100 сообщений в неделю?", "Трудности с людьми в истерике?", "Конфиденциальность?", "Знаете запрещённые вопросы в кризисе?", "Что делать, если человек взял нож/таблетки?", "Слова поддержки на сообщение о 3-дневной апатии.", "Слова на сообщение про месть и интимные фото.", "Пользователь режет руку, мама позор семьи — действия?"]
+ANKETA_MONTAZH = ["Ваш юз.", "Псевдоним/тег.", "Возраст.", "Часовой пояс от МСК.", "Сколько часов в неделю готовы уделять монтажу?", "Готовы ли выполнять правки?", "Какие программы используете?", "Готовы ли работать с сырым материалом?", "Есть ли опыт создания видео?", "Опыт работы со звуком от 1 до 10?", "Трудности с большими текстами?", "3 идеи для 30-сек видео.", "Создайте 3 коротких видео до 30 сек."]
+ANKETA_TYPES = {"obchenie": ("ОБЩЕНИЕ", ANKETA_OBSHENIE), "podderzhka": ("ПОДДЕРЖКА", ANKETA_PODDERZHKA), "montazh": ("МОНТАЖ", ANKETA_MONTAZH)}
 
 class Storage:
     def __init__(self, path):
@@ -42,125 +32,76 @@ class Storage:
         self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._create_tables()
-
     def _create_tables(self):
         with self.lock:
             c = self.conn.cursor()
             c.executescript("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY, username TEXT, pseudo TEXT UNIQUE,
-                    nickname TEXT, age TEXT, need TEXT, rank INTEGER DEFAULT 0,
-                    agreement INTEGER DEFAULT 0, banned INTEGER DEFAULT 0,
-                    ban_reason TEXT, warns INTEGER DEFAULT 0, muted_until REAL DEFAULT 0,
-                    last_msg REAL DEFAULT 0, messages INTEGER DEFAULT 0,
-                    rating_sum INTEGER DEFAULT 0, rating_count INTEGER DEFAULT 0, joined TEXT
-                );
-                CREATE TABLE IF NOT EXISTS tickets (
-                    ticket_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER,
-                    admin_id INTEGER, category TEXT, status TEXT DEFAULT 'open', created TEXT
-                );
-                CREATE TABLE IF NOT EXISTS replies (
-                    admin_msg_id INTEGER PRIMARY KEY, user_id INTEGER, ticket_id INTEGER
-                );
+                CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, pseudo TEXT UNIQUE, nickname TEXT, age TEXT, need TEXT, rank INTEGER DEFAULT 0, agreement INTEGER DEFAULT 0, banned INTEGER DEFAULT 0, ban_reason TEXT, warns INTEGER DEFAULT 0, muted_until REAL DEFAULT 0, last_msg REAL DEFAULT 0, messages INTEGER DEFAULT 0, rating_sum INTEGER DEFAULT 0, rating_count INTEGER DEFAULT 0, joined TEXT);
+                CREATE TABLE IF NOT EXISTS tickets (ticket_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, admin_id INTEGER, category TEXT, status TEXT DEFAULT 'open', created TEXT);
+                CREATE TABLE IF NOT EXISTS tech_tickets (ticket_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, admin_id INTEGER, status TEXT DEFAULT 'open', created TEXT);
+                CREATE TABLE IF NOT EXISTS anketa_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, anketa_type TEXT, status TEXT DEFAULT 'pending', created REAL, answers TEXT, msg_id INTEGER);
+                CREATE TABLE IF NOT EXISTS replies (admin_msg_id INTEGER PRIMARY KEY, user_id INTEGER, ticket_id INTEGER);
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
-                CREATE TABLE IF NOT EXISTS logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, admin_id INTEGER,
-                    target_id INTEGER, details TEXT, date TEXT
-                );
+                CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, admin_id INTEGER, target_id INTEGER, details TEXT, date TEXT);
                 CREATE TABLE IF NOT EXISTS command_perms (command TEXT PRIMARY KEY, min_rank INTEGER);
             """)
             c.execute("INSERT OR IGNORE INTO settings VALUES('agreement', 'Прежде чем продолжить, ознакомься с правилами использования бота.')")
-            c.execute("INSERT OR IGNORE INTO users(user_id, rank, nickname, joined) VALUES(?, 100, 'Разработчик', ?)",
-                      (Config.DEVELOPER_ID, time.strftime("%d.%m.%Y")))
-            defaults = {"setrole": 5, "removerole": 5, "ban": 5, "unban": 5, "warn": 5, "unwarn": 5,
-                        "kick": 5, "mute": 5, "unmute": 5, "check": 1, "botstats": 8, "logs": 8, "broadcast": 8}
-            for cmd, rank in defaults.items():
-                c.execute("INSERT OR IGNORE INTO command_perms VALUES(?, ?)", (cmd, rank))
+            c.execute("INSERT OR IGNORE INTO users(user_id, rank, nickname, joined) VALUES(?, 100, 'Разработчик', ?)", (Config.DEVELOPER_ID, time.strftime("%d.%m.%Y")))
+            defaults = {"setrole": 5, "removerole": 5, "ban": 5, "unban": 5, "warn": 5, "unwarn": 5, "kick": 5, "mute": 5, "unmute": 5, "check": 1, "botstats": 8, "logs": 8, "broadcast": 8}
+            for cmd, rank in defaults.items(): c.execute("INSERT OR IGNORE INTO command_perms VALUES(?, ?)", (cmd, rank))
             self.conn.commit()
-
     def _exec(self, sql, params=(), fetch=None):
         with self.lock:
-            cur = self.conn.cursor()
-            cur.execute(sql, params)
+            cur = self.conn.cursor(); cur.execute(sql, params)
             if fetch == "one": return cur.fetchone()
             if fetch == "all": return cur.fetchall()
-            self.conn.commit()
-            return cur.lastrowid
-
+            self.conn.commit(); return cur.lastrowid
     def get_user(self, uid):
         row = self._exec("SELECT * FROM users WHERE user_id=?", (uid,), "one")
         if not row:
             self._exec("INSERT INTO users(user_id, joined) VALUES(?, ?)", (uid, time.strftime("%d.%m.%Y")))
             row = self._exec("SELECT * FROM users WHERE user_id=?", (uid,), "one")
         return row
-
     def set_user(self, uid, **kwargs):
         if not kwargs: return
         fields = ", ".join(f"{k}=?" for k in kwargs)
         self._exec(f"UPDATE users SET {fields} WHERE user_id=?", list(kwargs.values()) + [uid])
-
-    def set_rank(self, uid, rank, nickname=None):
-        self._exec("UPDATE users SET rank=?, nickname=? WHERE user_id=?", (int(rank), nickname, uid))
-
-    def remove_role(self, uid):
-        self._exec("UPDATE users SET rank=0, nickname=NULL WHERE user_id=?", (uid,))
-
-    def pseudo_taken(self, pseudo):
-        return self._exec("SELECT user_id FROM users WHERE pseudo=?", (pseudo,), "one") is not None
-
-    def set_ban(self, uid, banned, reason=""):
-        self._exec("UPDATE users SET banned=?, ban_reason=? WHERE user_id=?", (banned, reason, uid))
-
-    def set_warns(self, uid, count):
-        self._exec("UPDATE users SET warns=? WHERE user_id=?", (count, uid))
-
-    def add_rating(self, uid, score):
-        self._exec("UPDATE users SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id=?", (score, uid))
-
+    def set_rank(self, uid, rank, nickname=None): self._exec("UPDATE users SET rank=?, nickname=? WHERE user_id=?", (int(rank), nickname, uid))
+    def remove_role(self, uid): self._exec("UPDATE users SET rank=0, nickname=NULL WHERE user_id=?", (uid,))
+    def pseudo_taken(self, pseudo): return self._exec("SELECT user_id FROM users WHERE pseudo=?", (pseudo,), "one") is not None
+    def set_ban(self, uid, banned, reason=""): self._exec("UPDATE users SET banned=?, ban_reason=? WHERE user_id=?", (banned, reason, uid))
+    def set_warns(self, uid, count): self._exec("UPDATE users SET warns=? WHERE user_id=?", (count, uid))
+    def add_rating(self, uid, score): self._exec("UPDATE users SET rating_sum = rating_sum + ?, rating_count = rating_count + 1 WHERE user_id=?", (score, uid))
     def rating_str(self, uid):
         if uid == Config.DEVELOPER_ID: return "⭐⭐⭐⭐⭐ (5.0)"
         u = self.get_user(uid)
         if not u["rating_count"]: return "—"
         avg = round(u["rating_sum"] / u["rating_count"], 1)
         return f"{'⭐' * int(round(avg))} ({avg})"
-
-    def get_all_admins(self):
-        return self._exec("SELECT * FROM users WHERE rank >= 1 ORDER BY rank DESC, user_id", fetch="all") or []
-
-    def create_ticket(self, uid, category):
-        return self._exec("INSERT INTO tickets(user_id, category, created) VALUES(?, ?, ?)", (uid, category, time.strftime("%d.%m.%Y %H:%M")))
-
-    def get_open_ticket(self, uid):
-        return self._exec("SELECT * FROM tickets WHERE user_id=? AND status='open' ORDER BY ticket_id DESC LIMIT 1", (uid,), "one")
-
-    def get_ticket(self, tid):
-        return self._exec("SELECT * FROM tickets WHERE ticket_id=?", (tid,), "one")
-
-    def set_ticket_admin(self, tid, admin_id):
-        self._exec("UPDATE tickets SET admin_id=? WHERE ticket_id=?", (admin_id, tid))
-
-    def close_ticket(self, tid):
-        self._exec("UPDATE tickets SET status='closed' WHERE ticket_id=?", (tid,))
-
-    def save_reply(self, msg_id, uid, tid):
-        self._exec("REPLACE INTO replies VALUES(?, ?, ?)", (msg_id, uid, tid))
-
-    def get_reply(self, msg_id):
-        return self._exec("SELECT * FROM replies WHERE admin_msg_id=?", (msg_id,), "one")
-
+    def get_all_admins(self): return self._exec("SELECT * FROM users WHERE rank >= 1 ORDER BY rank DESC, user_id", fetch="all") or []
+    def create_ticket(self, uid, category): return self._exec("INSERT INTO tickets(user_id, category, created) VALUES(?, ?, ?)", (uid, category, time.strftime("%d.%m.%Y %H:%M")))
+    def get_open_ticket(self, uid): return self._exec("SELECT * FROM tickets WHERE user_id=? AND status='open' ORDER BY ticket_id DESC LIMIT 1", (uid,), "one")
+    def get_ticket(self, tid): return self._exec("SELECT * FROM tickets WHERE ticket_id=?", (tid,), "one")
+    def set_ticket_admin(self, tid, admin_id): self._exec("UPDATE tickets SET admin_id=? WHERE ticket_id=?", (admin_id, tid))
+    def close_ticket(self, tid): self._exec("UPDATE tickets SET status='closed' WHERE ticket_id=?", (tid,))
+    def create_tech_ticket(self, uid): return self._exec("INSERT INTO tech_tickets(user_id, created) VALUES(?, ?)", (uid, time.strftime("%d.%m.%Y %H:%M")))
+    def get_open_tech_ticket(self, uid): return self._exec("SELECT * FROM tech_tickets WHERE user_id=? AND status='open' ORDER BY ticket_id DESC LIMIT 1", (uid,), "one")
+    def close_tech_ticket(self, tid): self._exec("UPDATE tech_tickets SET status='closed' WHERE ticket_id=?", (tid,))
+    def has_pending_anketa(self, uid): return self._exec("SELECT id FROM anketa_subs WHERE user_id=? AND status='pending'", (uid,), "one") is not None
+    def last_anketa_time(self, uid):
+        row = self._exec("SELECT created FROM anketa_subs WHERE user_id=? ORDER BY id DESC LIMIT 1", (uid,), "one")
+        return float(row["created"]) if row else 0
+    def create_anketa(self, uid, anketa_type, answers): return self._exec("INSERT INTO anketa_subs(user_id, anketa_type, answers, created) VALUES(?, ?, ?, ?)", (uid, anketa_type, "\n---\n".join(answers), time.time()))
+    def set_anketa_status(self, aid, status): self._exec("UPDATE anketa_subs SET status=? WHERE id=?", (status, aid))
+    def get_anketa(self, aid): return self._exec("SELECT * FROM anketa_subs WHERE id=?", (aid,), "one")
+    def save_reply(self, msg_id, uid, tid): self._exec("REPLACE INTO replies VALUES(?, ?, ?)", (msg_id, uid, tid))
+    def get_reply(self, msg_id): return self._exec("SELECT * FROM replies WHERE admin_msg_id=?", (msg_id,), "one")
     def get_setting(self, key, default=""):
         row = self._exec("SELECT value FROM settings WHERE key=?", (key,), "one")
         return row["value"] if row else default
-
-    def add_log(self, action, admin_id=None, target_id=None, details=""):
-        self._exec("INSERT INTO logs(action, admin_id, target_id, details, date) VALUES(?, ?, ?, ?, ?)", (action, admin_id, target_id, details, time.strftime("%d.%m.%Y %H:%M:%S")))
-
-    def get_logs(self, limit=10):
-        return self._exec("SELECT * FROM logs ORDER BY id DESC LIMIT ?", (limit,), "all") or []
-
-    def get_all_users(self):
-        return self._exec("SELECT user_id FROM users", fetch="all") or []
-
+    def add_log(self, action, admin_id=None, target_id=None, details=""): self._exec("INSERT INTO logs(action, admin_id, target_id, details, date) VALUES(?, ?, ?, ?, ?)", (action, admin_id, target_id, details, time.strftime("%d.%m.%Y %H:%M:%S")))
+    def get_logs(self, limit=10): return self._exec("SELECT * FROM logs ORDER BY id DESC LIMIT ?", (limit,), "all") or []
+    def get_all_users(self): return self._exec("SELECT user_id FROM users", fetch="all") or []
     def get_stats(self):
         with self.lock:
             cur = self.conn.cursor()
@@ -171,31 +112,22 @@ class Storage:
             cur.execute("SELECT COUNT(*) as cnt FROM users WHERE messages > 0"); active = cur.fetchone()["cnt"]
             cur.execute("SELECT SUM(messages) as s FROM users"); total_messages = cur.fetchone()["s"] or 0
             cur.execute("SELECT SUM(warns) as s FROM users"); total_warns = cur.fetchone()["s"] or 0
-        return {"total": total, "admins": admins, "users_only": users_only, "banned": banned,
-                "active": active, "total_messages": total_messages, "total_warns": total_warns}
-
+        return {"total": total, "admins": admins, "users_only": users_only, "banned": banned, "active": active, "total_messages": total_messages, "total_warns": total_warns}
     def get_perm(self, command, default=8):
         row = self._exec("SELECT min_rank FROM command_perms WHERE command=?", (command,), "one")
         return row["min_rank"] if row else default
 
 db = Storage(Config.DB_PATH)
 bot = telebot.TeleBot(Config.TOKEN, parse_mode="HTML")
-try:
-    bot.remove_webhook(drop_pending_updates=True)
-    print("✅ Webhook удалён")
-except Exception as e:
-    print(f"⚠️ Webhook: {e}")
-
-talk_sessions = {}
-
+try: bot.remove_webhook(drop_pending_updates=True)
+except: pass
+talk_sessions, tech_sessions, anketa_sessions = {}, {}, {}
 def rank_of(uid): return 100 if uid == Config.DEVELOPER_ID else db.get_user(uid)["rank"]
 def rank_label(r): return "⚙️ Разработчик" if r == 100 else ("👤 Пользователь" if r == 0 else f"🛡 {RANKS.get(r, 'Неизвестно')}")
 def is_banned(uid): return bool(db.get_user(uid)["banned"])
-
 def nick_tg(uid):
     try: return bot.get_chat(uid).first_name or f"ID{uid}"
     except: return f"ID{uid}"
-
 def safe_username(uid):
     u = db.get_user(uid)
     if u["username"]: return f"@{u['username']}"
@@ -203,24 +135,19 @@ def safe_username(uid):
         c = bot.get_chat(uid)
         return f"@{c.username}" if c.username else "без username"
     except: return "без username"
-
 def admin_pseudo(uid):
     if not uid: return "(#не назначен)"
     nick = db.get_user(uid)["nickname"]
     return f"(#{nick})" if nick else "(#Администратор)"
-
 def is_flood(uid):
     u = db.get_user(uid); now = time.time()
     if u["muted_until"] and now < u["muted_until"]: return True
     if u["last_msg"] and now - u["last_msg"] < Config.FLOOD_INTERVAL:
         db.set_user(uid, muted_until=now + Config.MUTE_TIME); return True
     db.set_user(uid, last_msg=now); return False
-
 def check_access(message, min_rank):
-    if rank_of(message.from_user.id) < min_rank:
-        bot.reply_to(message, "❌ Недостаточно прав!"); return False
+    if rank_of(message.from_user.id) < min_rank: bot.reply_to(message, "❌ Недостаточно прав!"); return False
     return True
-
 def parse_pseudo(raw):
     if not raw: return None, "Введите псевдоним через \"#\" пример: #бес"
     raw = raw.strip()
@@ -232,7 +159,6 @@ def parse_pseudo(raw):
     pseudo = "#" + name
     if db.pseudo_taken(pseudo): return None, "Этот псевдоним уже занят!"
     return pseudo, None
-
 def resolve_user(message, text):
     if message.reply_to_message:
         rt = message.reply_to_message
@@ -247,28 +173,28 @@ def resolve_user(message, text):
         try: return bot.get_chat(arg).id
         except: return None
     return None
-
 def main_menu_kb():
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    kb.add(types.KeyboardButton("💬 Поговорить с бесом"))
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    kb.add(types.KeyboardButton("💬 Поговорить с бесом"), types.KeyboardButton("🧑‍💻 Тех поддержка"), types.KeyboardButton("🖤 Стать бесом"))
     return kb
-
 def dialog_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    kb.add(types.KeyboardButton("❌ Разорвать связь"), types.KeyboardButton("⭐ Поставить оценку"),
-           types.KeyboardButton("🔄 Сменить беса"), types.KeyboardButton("👑 Позвать беса"))
+    kb.add(types.KeyboardButton("❌ Разорвать связь"), types.KeyboardButton("⭐ Поставить оценку"), types.KeyboardButton("🔄 Сменить беса"), types.KeyboardButton("👑 Позвать беса"))
     return kb
-
 def need_kb():
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("💙 Поддержка", callback_data="need_Поддержка"),
-           types.InlineKeyboardButton("💬 Общение", callback_data="need_Общение"),
-           types.InlineKeyboardButton("🎯 Универсал", callback_data="need_Универсал"))
+    kb.add(types.InlineKeyboardButton("💙 Поддержка", callback_data="need_Поддержка"), types.InlineKeyboardButton("💬 Общение", callback_data="need_Общение"), types.InlineKeyboardButton("🎯 Универсал", callback_data="need_Универсал"))
     return kb
-
+def anketa_types_kb():
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(types.InlineKeyboardButton("💬 Анкета на общение", callback_data="ank_obchenie"), types.InlineKeyboardButton("💙 Анкета на поддержку", callback_data="ank_podderzhka"), types.InlineKeyboardButton("🎬 Анкета на монтажёра", callback_data="ank_montazh"))
+    return kb
 def rating_kb():
     kb = types.InlineKeyboardMarkup(row_width=1)
     for i in range(1, 6): kb.add(types.InlineKeyboardButton(str(i), callback_data=f"rate_{i}"))
+    return kb
+def anketa_review_kb(aid):
+    kb = types.InlineKeyboardMarkup(); kb.add(types.InlineKeyboardButton("✅ Одобрено", callback_data=f"ank_ok_{aid}"), types.InlineKeyboardButton("❌ Отказано", callback_data=f"ank_no_{aid}"))
     return kb
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
@@ -276,18 +202,15 @@ def cmd_start(message):
     uid = message.from_user.id; u = db.get_user(uid)
     if u["banned"]: return bot.send_message(uid, "🚫 Вы заблокированы в боте.")
     if not u["agreement"]:
-        agreement = db.get_setting("agreement", "Прежде чем продолжить, ознакомься с правилами использования бота.")
-        text = f"❗<b>Пользовательское соглашение</b>\n\n{agreement}\n\nНажми на кнопку <b>«Принять соглашение»</b>, чтобы продолжить."
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(types.InlineKeyboardButton("✅ Принять соглашение", callback_data="accept"),
-               types.InlineKeyboardButton("📜 Пользовательское соглашение", url=Config.RULES_URL))
+        text = f"❗<b>Пользовательское соглашение</b>\n\n{db.get_setting('agreement')}\n\nНажми на кнопку <b>«Принять соглашение»</b>, чтобы продолжить."
+        kb = types.InlineKeyboardMarkup(row_width=1); kb.add(types.InlineKeyboardButton("✅ Принять соглашение", callback_data="accept"), types.InlineKeyboardButton("📜 Пользовательское соглашение", url=Config.RULES_URL))
         return bot.send_message(uid, text, reply_markup=kb)
     send_welcome(uid)
 
 def send_welcome(uid):
     text = ("Соглашение принято ✅\n\n🌙 <b>ᴨᴩиʙᴇт, зᴀбᴧудиʙɯᴀя душᴀ</b> 🖤\n\nЗа этим экраном — не роботы, а живые люди. Мы здесь, чтобы выслушать тебя и поговорить по душам.\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n🕯️ <b>ᴄообщᴇния доходят нᴇ ᴄᴩᴀзу</b>\n\nПожалуйста, не блокируй бот, если тебе не ответили в первые 10–20 минут.\n\n"
-            "🖤 <b>ᴋᴀᴋ нᴀчᴀᴛь?</b>\n\n▸ Нажми на кнопку «💬 Поговорить с бесом» внизу")
+            "🖤 <b>ᴋᴀᴋ нᴀчᴀть?</b>\n\n▸ Поговорить с бесом\n▸ Тех поддержка\n▸ Стать бесом")
     bot.send_message(uid, text, reply_markup=main_menu_kb())
 
 @bot.callback_query_handler(func=lambda c: c.data == "accept")
@@ -334,7 +257,6 @@ def cb_need(call):
     if uid not in talk_sessions: return bot.answer_callback_query(call.id, "Анкета не активна")
     need = call.data.split("_", 1)[1]; state = talk_sessions.pop(uid)
     if state["pseudo"]: db.set_user(uid, pseudo=state["pseudo"], age=state["age"], need=need)
-    else: db.set_user(uid, need=need)
     tid = db.create_ticket(uid, need)
     bot.edit_message_text("✔️ <b>Запрос отправлен!</b>\n\n❤️ Ожидай — кто-то из поддержки скоро напишет.\n\n<i>Можешь просто побыть здесь</i>", call.message.chat.id, call.message.message_id)
     post_new_ticket(uid, tid, need); bot.answer_callback_query(call.id, "✅ Запрос отправлен")
@@ -350,8 +272,7 @@ def post_new_ticket(uid, tid, need):
 @bot.callback_query_handler(func=lambda c: c.data.startswith("take_"))
 def cb_take(call):
     admin_id = call.from_user.id
-    if rank_of(admin_id) < Config.MIN_TAKE:
-        return bot.answer_callback_query(call.id, "❌ Брать заявки могут только с 1 ранга", show_alert=True)
+    if rank_of(admin_id) < Config.MIN_TAKE: return bot.answer_callback_query(call.id, "❌ Брать заявки могут только с 1 ранга", show_alert=True)
     tid = int(call.data.split("_", 1)[1]); t = db.get_ticket(tid)
     if not t or t["status"] != "open": return bot.answer_callback_query(call.id, "Заявка уже закрыта")
     if t["admin_id"]: return bot.answer_callback_query(call.id, "Заявку уже взяли", show_alert=True)
@@ -360,8 +281,7 @@ def cb_take(call):
     u = db.get_user(t["user_id"])
     bot.send_message(Config.SUPPORT_GROUP, f"🖤 <b>Заявка принята</b>\n👮 Бес: {admin_pseudo(admin_id)}\n👤 Пользователь: {u['pseudo']}")
     rating = db.rating_str(admin_id)
-    try:
-        bot.send_message(t["user_id"], f"✔️ <b>Бес тут!</b>\n👮 Твой бес: {admin_pseudo(admin_id)}\n⭐ Рейтинг: {rating}\n\n❤️ Я здесь, чтобы выслушать и поддержать.\n\n💭 Просто пиши — я всё вижу.", reply_markup=dialog_kb())
+    try: bot.send_message(t["user_id"], f"✔️ <b>Бес тут!</b>\n👮 Твой бес: {admin_pseudo(admin_id)}\n⭐ Рейтинг: {rating}\n\n❤️ Я здесь, чтобы выслушать и поддержать.\n\n💭 Просто пиши — я всё вижу.", reply_markup=dialog_kb())
     except: pass
     bot.answer_callback_query(call.id, "✅ Принято")
 
@@ -385,8 +305,7 @@ def cb_rate(call):
     if last_ticket and last_ticket["admin_id"]:
         admin_id = last_ticket["admin_id"]; db.add_rating(admin_id, score); db.add_log("rating", uid, admin_id, f"{score}⭐")
         reviewer = db.get_user(uid); reviewer_pseudo = reviewer["pseudo"] or f"ID{uid}"
-        try:
-            bot.send_message(admin_id, f"⭐ <b>Вам оставили отзыв!</b>\n━━━━━━━━━━━━━━━━━━\n👤 От: {reviewer_pseudo}\n⭐ Оценка: {stars} ({score}/5)\n🎫 Обращение: #{last_ticket['ticket_id']}")
+        try: bot.send_message(admin_id, f"⭐ <b>Вам оставили отзыв!</b>\n━━━━━━━━━━━━━━━━━━\n👤 От: {reviewer_pseudo}\n⭐ Оценка: {stars} ({score}/5)\n🎫 Обращение: #{last_ticket['ticket_id']}")
         except: pass
     bot.edit_message_text(f"✔️ Оценка {stars} — спасибо!\n\n<i>Если понадобится — я здесь.</i>", call.message.chat.id, call.message.message_id)
     bot.send_message(uid, "Главное меню:", reply_markup=main_menu_kb()); bot.answer_callback_query(call.id)
@@ -434,6 +353,123 @@ def btn_rating(message):
     t = db.get_open_ticket(uid)
     if not t: return bot.send_message(uid, "⚠️ Нет активного обращения.")
     bot.send_message(uid, "⭐ Выбери оценку:", reply_markup=rating_kb())
+
+@bot.message_handler(func=lambda m: m.chat.type == "private" and m.text == "🧑‍💻 Тех поддержка")
+def btn_tech(message):
+    uid = message.from_user.id
+    if is_banned(uid): return bot.send_message(uid, "🚫 Вы заблокированы в боте.")
+    u = db.get_user(uid)
+    if not u["pseudo"] or not u["age"]:
+        tech_sessions[uid] = {"step": 0, "pseudo": None, "age": None}
+        return bot.send_message(uid, "💭 <b>Прежде чем начать</b>\n\nПридумай псевдоним — только буквы, через #. Пример: <code>#бес</code>")
+    if db.get_open_tech_ticket(uid): return bot.send_message(uid, "⚠️ У вас уже есть активное обращение.")
+    create_tech_forward(uid)
+
+def create_tech_forward(uid):
+    tid = db.create_tech_ticket(uid); u = db.get_user(uid)
+    bot.send_message(uid, f"✔️ <b>Обращение #{tid} принято!</b>\n\n<i>Ответим как можно скорее.</i>\n<i>Чтобы выйти из диалога, нажми</i> <b>«Разорвать связь»</b>.")
+    try:
+        sent = bot.send_message(Config.TECH_GROUP, f"🆕 <b>Новый запрос</b>\n━━━━━━━━━━━━━━━━━━\n👤 <b>Псевдоним:</b> {u['pseudo']}\n🎂 <b>Возраст:</b> {u['age']}\n🎯 <b>Нужно:</b> Тех.поддержка\n🆔 <code>{uid}</code>")
+        db.save_reply(sent.message_id, uid, tid)
+    except Exception as e: print(f"[tech] {e}")
+
+@bot.message_handler(func=lambda m: m.chat.type == "private" and m.from_user.id in tech_sessions, content_types=["text"])
+def tech_registration(message):
+    uid = message.from_user.id
+    if is_banned(uid): return bot.send_message(uid, "🚫 Вы заблокированы в боте.")
+    state = tech_sessions[uid]; text = (message.text or "").strip()
+    if state["step"] == 0:
+        pseudo, err = parse_pseudo(text)
+        if err: return bot.send_message(uid, err)
+        state["pseudo"] = pseudo; state["step"] = 1
+        return bot.send_message(uid, "🙂 Сколько тебе лет?")
+    if state["step"] == 1:
+        if not text.isdigit(): return bot.send_message(uid, "Используйте только цифры!")
+        state["age"] = text; db.set_user(uid, pseudo=state["pseudo"], age=state["age"]); del tech_sessions[uid]
+        create_tech_forward(uid)
+
+@bot.message_handler(func=lambda m: m.chat.type == "private" and m.text == "🖤 Стать бесом")
+def btn_become(message):
+    uid = message.from_user.id
+    if is_banned(uid): return bot.send_message(uid, "🚫 Вы заблокированы в боте.")
+    if db.has_pending_anketa(uid): return bot.send_message(uid, "⚠️ Вы уже отправляете анкету!")
+    last = db.last_anketa_time(uid)
+    if last and time.time() - last < Config.ANKETA_COOLDOWN:
+        left = int((Config.ANKETA_COOLDOWN - (time.time() - last)) // 3600)
+        return bot.send_message(uid, f"⏳ Анкету можно писать раз в 5 часов. Осталось: {left}ч")
+    bot.send_message(uid, "🖤 <b>Стать бесом</b>\n\nВыберите на кого хотите пойти:", reply_markup=anketa_types_kb())
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("ank_"))
+def cb_anketa_type(call):
+    uid = call.from_user.id
+    if is_banned(uid): return bot.answer_callback_query(call.id, "Вы заблокированы")
+    key = call.data.split("_", 1)[1]
+    if key not in ANKETA_TYPES: return bot.answer_callback_query(call.id, "Ошибка")
+    if db.has_pending_anketa(uid): return bot.answer_callback_query(call.id, "Вы уже отправляете анкету!", show_alert=True)
+    anketa_sessions[uid] = {"type": key, "step": 0, "answers": []}
+    title, questions = ANKETA_TYPES[key]
+    bot.edit_message_text(f"📝 <b>Анкета на «{title}»</b>\n━━━━━━━━━━━━━━━━━━\n<b>1/{len(questions)}</b>\n\n{questions[0]}", call.message.chat.id, call.message.message_id)
+    bot.answer_callback_query(call.id)
+
+@bot.message_handler(func=lambda m: m.chat.type == "private" and m.from_user.id in anketa_sessions, content_types=["text", "photo", "video", "document"])
+def anketa_step(message):
+    uid = message.from_user.id
+    if is_banned(uid): return bot.send_message(uid, "🚫 Вы заблокированы в боте.")
+    state = anketa_sessions[uid]; title, questions = ANKETA_TYPES[state["type"]]
+    text = (message.text or "").strip() if message.text else ""
+    if text and len(text) < 3: return bot.send_message(uid, "⚠️ Ответ слишком короткий. Напиши подробнее (минимум 3 символа).")
+    if text:
+        q_lower = questions[state["step"]].lower()
+        if "возраст" in q_lower:
+            if not text.isdigit(): return bot.send_message(uid, "⚠️ Возраст — только цифры!")
+            if int(text) < 14 or int(text) > 100: return bot.send_message(uid, "⚠️ Возраст от 14 до 100")
+        if "оценка" in q_lower or "оцените" in q_lower:
+            if not text.isdigit() or not (1 <= int(text) <= 10): return bot.send_message(uid, "⚠️ Оценка — число от 1 до 10!")
+        if "часовой пояс" in q_lower:
+            if not re.match(r"^[+-]?\d{1,2}$", text): return bot.send_message(uid, "⚠️ Часовой пояс укажи числом. Пример: +2, -3, 0")
+        if "псевдоним" in q_lower or "тег" in q_lower:
+            if not text.startswith("#"): return bot.send_message(uid, "⚠️ Псевдоним через #. Пример: #бес")
+    if message.text: state["answers"].append(text)
+    elif message.photo: state["answers"].append("[фото]")
+    elif message.video: state["answers"].append("[видео]")
+    elif message.document: state["answers"].append(f"[файл: {message.document.file_name}]")
+    else: state["answers"].append("[медиа]")
+    state["step"] += 1
+    if state["step"] < len(questions): bot.send_message(uid, f"<b>{state['step']+1}/{len(questions)}</b>\n\n{questions[state['step']]}")
+    else:
+        answers = state["answers"]; anketa_type = state["type"]; del anketa_sessions[uid]
+        aid = db.create_anketa(uid, anketa_type, answers); post_anketa(uid, aid, anketa_type, questions, answers)
+        bot.send_message(uid, "Ваша анкета отправлена на рассмотрение администрации")
+
+def post_anketa(uid, aid, anketa_type, questions, answers):
+    title, _ = ANKETA_TYPES[anketa_type]; u = db.get_user(uid)
+    text = f"📝 <b>Новая анкета — {title}</b>\n━━━━━━━━━━━━━━━━━━\n👤 <b>Пользователь:</b> {safe_username(uid)} ({nick_tg(uid)})\n🆔 <code>{uid}</code>\n━━━━━━━━━━━━━━━━━━\n"
+    for i, (q, a) in enumerate(zip(questions, answers), 1): text += f"<b>{i}. {q}</b>\n> {a}\n\n"
+    text += f"━━━━━━━━━━━━━━━━━━\n🎫 <b>Анкета:</b> #{aid}"
+    chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+    try:
+        for chunk in chunks[:-1]: bot.send_message(Config.ANKETA_GROUP, chunk)
+        bot.send_message(Config.ANKETA_GROUP, chunks[-1], reply_markup=anketa_review_kb(aid))
+    except Exception as e: print(f"[post_anketa] {e}")
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("ank_ok_") or c.data.startswith("ank_no_"))
+def cb_anketa_decide(call):
+    action, aid = call.data.split("_")[1], int(call.data.split("_")[2]); a = db.get_anketa(aid)
+    if not a or a["status"] != "pending": return bot.answer_callback_query(call.id, "Уже обработано")
+    uid = a["user_id"]
+    if action == "ok":
+        db.set_anketa_status(aid, "approved")
+        try: bot.send_message(uid, "Ваша анкета была одобрена ✅\n<i>Ожидайте, с вами свяжутся</i>")
+        except: pass
+        bot.send_message(Config.ANKETA_GROUP, f"✅ Анкета #{aid} одобрена.")
+    else:
+        db.set_anketa_status(aid, "rejected")
+        try: bot.send_message(uid, "Ваша анкета была отказана.")
+        except: pass
+        bot.send_message(Config.ANKETA_GROUP, f"❌ Анкета #{aid} отказана.")
+    try: bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+    except: pass
+    bot.answer_callback_query(call.id)
 
 @bot.message_handler(commands=["help"])
 def cmd_help(message):
@@ -649,6 +685,17 @@ def handle_messages(message):
             bot.copy_message(target, chat, message.message_id)
         except Exception as e: bot.reply_to(message, f"❌ Не доставлено: {e}")
         return
+    if chat == Config.TECH_GROUP and message.reply_to_message:
+        rt = message.reply_to_message
+        if rt.from_user.id != bot.get_me().id: return
+        r = db.get_reply(rt.message_id)
+        if not r: return
+        target = r["user_id"]; admin_id = uid
+        try:
+            bot.send_message(target, f"📩 <b>Новое сообщение</b>\nОт администратора\n👮 {admin_pseudo(admin_id)}")
+            bot.copy_message(target, chat, message.message_id)
+        except Exception as e: bot.reply_to(message, f"❌ Не доставлено: {e}")
+        return
     if message.chat.type == "private":
         u = db.get_user(uid)
         if u["banned"]:
@@ -665,6 +712,13 @@ def handle_messages(message):
                 sent = bot.send_message(Config.SUPPORT_GROUP, f"📩 <b>Сообщение от {u['pseudo'] or uid}</b>\n━━━━━━━━━━━━━━━━━━\n🆔 <code>{uid}</code>\n👮 Администратор пользователя: {admin_nick}")
                 bot.copy_message(Config.SUPPORT_GROUP, chat, message.message_id); db.save_reply(sent.message_id, uid, t["ticket_id"])
             except Exception as e: print(f"[forward] {e}")
+            return
+        tt = db.get_open_tech_ticket(uid)
+        if tt:
+            try:
+                sent = bot.send_message(Config.TECH_GROUP, f"📩 <b>Сообщение от {u['pseudo'] or uid}</b>\n━━━━━━━━━━━━━━━━━━\n🆔 <code>{uid}</code>")
+                bot.copy_message(Config.TECH_GROUP, chat, message.message_id); db.save_reply(sent.message_id, uid, tt["ticket_id"])
+            except Exception as e: print(f"[forward tech] {e}")
             return
 
 if __name__ == "__main__":
